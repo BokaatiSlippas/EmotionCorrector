@@ -1,103 +1,70 @@
 #include <Servo.h>
 
-// Servo objects
-Servo panServo;
-Servo tiltServo;
+Servo horServo;
+Servo vertServo;
 
-// Servo pins
-const int panPin = 9;
-const int tiltPin = 10;
-const int laserPin = 11;
+const int relayPin1 = 2;  // Connect to IN1
+const int HOR_PIN = 6;
+const int VERT_PIN = 7;
 
-// Servo limits (adjust based on your mechanical setup)
-const int panMin = 0;
-const int panMax = 180;
-const int tiltMin = 0;
-const int tiltMax = 180;
+// Neutral/home position
+const int HOR_HOME = 90;
+const int VERT_HOME = 90;
 
-// Current positions
-int currentPan = 90;
-int currentTilt = 90;
+// Example target positions
+const int POSITION_1_HOR = 45;
+const int POSITION_1_VERT = 60;
 
-// Smoothing factors (0.0-1.0), lower = smoother but slower
-float smoothingFactor = 0.2;
-
-// Safety timeout (milliseconds)
-unsigned long lastUpdateTime = 0;
-const unsigned long safetyTimeout = 2000; // 2 seconds
+const int POSITION_2_HOR = 135;
+const int POSITION_2_VERT = 30;
 
 void setup() {
   Serial.begin(9600);
   
-  // Attach servos
-  panServo.attach(panPin);
-  tiltServo.attach(tiltPin);
+  // Set relay pins as OUTPUT
+  pinMode(relayPin1, OUTPUT);
   
-  // Initialize laser pin
-  pinMode(laserPin, OUTPUT);
-  digitalWrite(laserPin, LOW); // Start with laser off
+  // Turn relays OFF initially
+  digitalWrite(relayPin1, LOW);  // Relay OFF
+
   
-  // Center servos
-  panServo.write(90);
-  tiltServo.write(90);
-  delay(1000); // Allow servos to reach position
+  horServo.attach(HOR_PIN);
+  vertServo.attach(VERT_PIN);
   
-  Serial.println("Arduino Laser Targeting System Ready");
+  // Start at home position
+  goHome();
+  delay(5000);
+
+
+  Serial.println("Setup finished");
 }
 
 void loop() {
-  // Check for new coordinates from Python
-  if (Serial.available() > 0) {
-    String data = Serial.readStringUntil('\n');
-    data.trim();
-    lastUpdateTime = millis(); // Reset safety timer
-    
-    // Parse coordinates in format: "X123Y456"
-    if (data.startsWith("X") && data.indexOf("Y") != -1) {
-      int xIndex = data.indexOf('X');
-      int yIndex = data.indexOf('Y');
-      
-      String xStr = data.substring(xIndex + 1, yIndex);
-      String yStr = data.substring(yIndex + 1);
-      
-      int x = xStr.toInt(); // 0-100
-      int y = yStr.toInt(); // 0-100
-      
-      // Convert normalized coordinates to servo angles
-      int targetPan = map(x, 0, 100, panMin, panMax);
-      int targetTilt = map(y, 0, 100, tiltMin, tiltMax);
-      
-      // Smooth movement
-      currentPan = smoothMove(currentPan, targetPan, smoothingFactor);
-      currentTilt = smoothMove(currentTilt, targetTilt, smoothingFactor);
-      
-      // Move servos
-      panServo.write(currentPan);
-      tiltServo.write(currentTilt);
-      
-      // Turn on laser when target is acquired
-      digitalWrite(laserPin, HIGH);
-      
-      // Optional: Send confirmation back to Python
-      Serial.print("Targeting: Pan=");
-      Serial.print(currentPan);
-      Serial.print(", Tilt=");
-      Serial.println(currentTilt);
-    }
-  }
+  // Sequence 1
+  response(POSITION_1_HOR, POSITION_1_VERT);
+  goHome();
+  delay(2000);
   
-  // Safety feature: Turn off laser if no updates received
-  if (millis() - lastUpdateTime > safetyTimeout) {
-    digitalWrite(laserPin, LOW);
-    Serial.println("Safety timeout: Laser disabled");
-    lastUpdateTime = millis(); // Prevent constant messaging
-  }
-  
-  // Small delay to prevent overwhelming the Arduino
-  delay(20);
+  // Sequence 2  
+  response(POSITION_2_HOR, POSITION_2_VERT);
+  goHome();
+  delay(2000);
 }
 
-// Smooth movement function
-int smoothMove(int current, int target, float factor) {
-  return current + factor * (target - current);
+void moveToAngles(int horAngle, int vertAngle) {
+  // Move both servos simultaneously
+  horServo.write(horAngle);
+  vertServo.write(vertAngle);
+  delay(500); // Wait for movement
+}
+
+void goHome() {
+  moveToAngles(HOR_HOME, VERT_HOME);
+}
+
+void response(int horAngle, int vertAngle) {
+  moveToAngles(horAngle, vertAngle);
+  digitalWrite(relayPin1, HIGH);   // Activate relay
+  delay(2000);                     // Wait 2 seconds
+  digitalWrite(relayPin1, LOW);    // Deactivate relay
 }
